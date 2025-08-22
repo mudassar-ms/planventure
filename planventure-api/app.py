@@ -1,6 +1,7 @@
 from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
+from flask_jwt_extended import JWTManager
 from datetime import datetime, timezone
 import os
 from dotenv import load_dotenv
@@ -8,10 +9,11 @@ from dotenv import load_dotenv
 # Load environment variables before any other code
 load_dotenv()
 
-# Initialize SQLAlchemy
+# Initialize extensions
 db = SQLAlchemy()
+jwt = JWTManager()
 
-def create_app():
+def create_app(config_name=None):
     app = Flask(__name__)
     
     # Basic configurations
@@ -24,6 +26,7 @@ def create_app():
     # Initialize extensions
     CORS(app)
     db.init_app(app)
+    jwt.init_app(app)
 
     # Import models here to avoid circular imports
     from models import User
@@ -39,6 +42,10 @@ def create_app():
             "status": "healthy",
             "timestamp": datetime.now(timezone.utc).isoformat()
         })
+
+    # Register blueprints
+    from routes.auth import auth_bp
+    app.register_blueprint(auth_bp)
 
     return app
 
