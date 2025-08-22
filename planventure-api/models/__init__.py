@@ -1,4 +1,4 @@
-from .user import User , db
+from .user import User
 from .trip import Trip
 
 __all__ = ['User', 'Trip']

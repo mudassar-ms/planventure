@@ -2,34 +2,67 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager
-from datetime import datetime, timezone
-import os
+from os import environ
 from dotenv import load_dotenv
+from datetime import timedelta
+from config import Config
 
-# Load environment variables before any other code
+# Load environment variables
 load_dotenv()
 
-# Initialize extensions
+# Initialize SQLAlchemy
 db = SQLAlchemy()
-jwt = JWTManager()
 
-def create_app(config_name=None):
+def create_app():
     app = Flask(__name__)
     
-    # Basic configurations
-    app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key')
-    app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'jwt-secret-key')
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///planventure.db')
+    # Configure CORS
+    CORS(app, 
+         resources={r"/*": {
+             "origins": Config.CORS_ORIGINS,
+             "methods": Config.CORS_METHODS,
+             "allow_headers": Config.CORS_HEADERS,
+             "supports_credentials": Config.CORS_SUPPORTS_CREDENTIALS
+         }})
+
+    # JWT Configuration
+    app.config['JWT_SECRET_KEY'] = environ.get('JWT_SECRET_KEY', 'your-secret-key')
+    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=1)
+    jwt = JWTManager(app)
+
+    @jwt.expired_token_loader
+    def expired_token_callback(jwt_header, jwt_data):
+        return jsonify({
+            'error': 'Token has expired',
+            'code': 'token_expired'
+        }), 401
+
+    @jwt.invalid_token_loader
+    def invalid_token_callback(error):
+        return jsonify({
+            'error': 'Invalid token',
+            'code': 'invalid_token'
+        }), 401
+
+    @jwt.unauthorized_loader
+    def missing_token_callback(error):
+        return jsonify({
+            'error': 'Authorization token is missing',
+            'code': 'authorization_required'
+        }), 401
+
+    # Database configuration
+    app.config['SQLALCHEMY_DATABASE_URI'] = environ.get('DATABASE_URL', 'sqlite:///planventure.db')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    app.config['DEBUG'] = os.getenv('FLASK_DEBUG', '0') == '1'
 
     # Initialize extensions
-    CORS(app)
     db.init_app(app)
-    jwt.init_app(app)
-
-    # Import models here to avoid circular imports
-    from models import User
+    
+    # Register blueprints
+    from routes.auth import auth_bp
+    from routes.trips import trips_bp
+    app.register_blueprint(auth_bp, url_prefix='/auth')
+    app.register_blueprint(trips_bp, url_prefix='/api')
 
     # Register routes
     @app.route('/')
@@ -38,19 +71,10 @@ def create_app(config_name=None):
 
     @app.route('/health')
     def health_check():
-        return jsonify({
-            "status": "healthy",
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        })
-
-    # Register blueprints
-    from routes.auth import auth_bp
-    app.register_blueprint(auth_bp)
+        return jsonify({"status": "healthy"})
 
     return app
 
-# Create app instance
-app = create_app()
-
 if __name__ == '__main__':
-    app.run()
+    app = create_app()
+    app.run(debug=True)
