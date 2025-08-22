@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
+from flask import jsonify
 from app import db
-from werkzeug.security import generate_password_hash, check_password_hash
+from utils.auth_utils import PasswordValidator
+from typing import Optional, Tuple
 
 class User(db.Model):
     __tablename__ = 'users'
@@ -14,11 +16,21 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
-    def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
+    def set_password(self, password: str) -> Tuple[bool, Optional[str]]:
+        """
+        Sets user password with validation
+        Returns: (success, error_message)
+        """
+        is_valid, error = PasswordValidator.validate_password(password)
+        if not is_valid:
+            return False, error
+            
+        self.password_hash = PasswordValidator.hash_password(password)
+        return True, None
 
-    def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
+    def check_password(self, password: str) -> bool:
+        """Verifies user password"""
+        return PasswordValidator.verify_password(self.password_hash, password)
 
     def to_dict(self):
         return {
@@ -33,3 +45,13 @@ class User(db.Model):
 
     def __repr__(self):
         return f'<User {self.email}>'
+
+# Example usage in registration route
+def example_registration_route():
+    user = User(email="example@example.com")  # Instantiate a User object with required fields
+    password = "your_password_here"  # Define the password variable
+    success, error = user.set_password(password)
+    if not success:
+        # from flask import jsonify  # Uncomment if jsonify is not already imported
+        return jsonify({'error': error}), 400
+    # Continue with registration logic...
